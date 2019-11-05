@@ -1,0 +1,66 @@
+#!/bin/sh
+
+# DOCUMENTATION
+# This Odyssey job script will run the MAKER genome annotation pipeline from a Singularity image.
+# It is based on a tutorial from FAS Informatics. The user should follow MAKER documentation to create
+# necessary control files where input data are supplied to MAKER.
+#
+# Lines below can be uncommented to perform repeat masking within MAKER. However, due to previous run
+# difficulties, it is instead recommended that users pre-mask their genome and provide the masked
+# genome to MAKER using the 'genome=' option. When masking, simple repeats should be soft masked
+# (lowercase) and interspersed, complex repeats should be hard masked (Ns).
+#
+# Other aspects of the below job script should also be modified by the user in an appropriate manner.
+#
+# A single argument can be provided to this job script to provide a specific maker_opts.ctl file.
+# This is helpful for using this same jobscript to run multiple MAKER annotations, as the maker_opts.ctl
+# file is normally the only input that will vary. By default, this script assumes that the file is
+# named maker_opts.ctl.
+#
+# Usage:
+# sbatch maker.jobscript [optional_maker_opts.ctl]
+
+# SLURM options
+# Customize --time, --ntasks, and --partition as appropriate
+# Below configuration uses 1/2 of a node (24 cores/96G RAM)
+#SBATCH --time=7-00:00:00
+# --ntasks should be <= 100 on Odyssey!!!
+#SBATCH -N 1                # Ensure that all cores are on one machine
+#SBATCH --ntasks=24
+#SBATCH --mem-per-cpu=4g
+#SBATCH --partition=edwards
+#SBATCH	-J myjob            # Job name for job
+#SBATCH -o myjob_%j.out  # File to which STDOUT will be written, %j inserts jobid
+#SBATCH -e myjob_%j.err  # File to which STDERR will be written, %j inserts jobid
+
+# set the default input maker_opts.ctl file if one is not provided
+if [[ -n $1 ]]
+  then
+    mopts=$1
+  else
+    mopts=maker_opts.ctl
+fi
+
+# Load MAKER singularity image
+MAKER_IMAGE=/n/singularity_images/informatics/maker:2.31.10--pl526_14.sif
+
+# Submit this job script from the directory with the MAKER control files
+
+# Setup files for optional repeat masking (w/ RepeatMasker)
+# Comment out these 3 lines if avoiding repeat masking within MAKER
+# export REPEATMASKER_LIB_DIR=$PWD/REPEATMASKER_LIB_DIR
+# mkdir -p "${REPEATMASKER_LIB_DIR}"
+# singularity exec ${MAKER_IMAGE} sh -c "ln -sf /n/home13/dcard/bin/RepeatMasker/Libraries/* ${REPEATMASKER_LIB_DIR}"
+
+# If RepBase RepeatMasker Edition has been downloaded, it should be copied into this directory:
+#   cp /path/to/RepeatMaskerLib.embl ${REPEATMASKER_LIB_DIR}
+
+# Add any MAKER options
+# * -mpi is required to use the host MPI for MAKER in a Singularity container
+# * -fix_nucleotides is required for hsap_contig.fasta example data
+# * -nodatastore is suggested for Lustre, as it reduces the number of directories created
+# * -RM_off is suggested to turn off repeat masking within MAKER (must supply own masked genome)
+singularity exec --no-home --cleanenv \
+${MAKER_IMAGE} mpiexec -n ${SLURM_NTASKS} maker \
+-fix_nucleotides -nodatastore -RM_off \
+${mopts} maker_bopts.ctl maker_exe.ctl
